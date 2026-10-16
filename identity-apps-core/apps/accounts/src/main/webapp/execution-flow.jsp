@@ -231,6 +231,40 @@
                 const [flowType, setFlowType] = useState("<%= Encode.forJavaScript(flowType) != null ? Encode.forJavaScript(flowType) : null %>");
                 const [ countDownRedirection, setCountDownRedirection ] = useState(null);
 
+                // Key of the parameters the executor of a redirection step expects back when the flow resumes.
+                const REDIRECTION_PARAMS_KEY = "redirectionParams";
+
+                /**
+                 * Collect the inputs to resume a flow with after an external redirection: the code and state, plus any
+                 * other parameter the executor declared as required in the redirection step and that the external
+                 * service appended to the return URL.
+                 */
+                const getRedirectionInputs = () => {
+                    const inputs = { code, state };
+                    let declaredParams = [];
+
+                    try {
+                        declaredParams = JSON.parse(localStorage.getItem(REDIRECTION_PARAMS_KEY)) || [];
+                    } catch (e) {
+                        declaredParams = [];
+                    }
+                    localStorage.removeItem(REDIRECTION_PARAMS_KEY);
+
+                    if (!Array.isArray(declaredParams)) {
+                        return inputs;
+                    }
+
+                    const queryParams = new URLSearchParams(window.location.search);
+
+                    declaredParams.forEach((param) => {
+                        if (typeof param === "string" && !(param in inputs) && queryParams.has(param)) {
+                            inputs[param] = queryParams.get(param);
+                        }
+                    });
+
+                    return inputs;
+                };
+
                 useEffect(() => {
                     const savedFlowId = localStorage.getItem("flowId");
 
@@ -238,10 +272,7 @@
                         setPostBody({
                             flowId: savedFlowId,
                             actionId: "",
-                            inputs: {
-                                code,
-                                state
-                            }
+                            inputs: getRedirectionInputs()
                         });
                     }
                 }, [code, state]);
@@ -436,6 +467,9 @@
                             setComponents(flow.data.components || []);
                             break;
                         case "REDIRECTION":
+                            // Remember what the executor expects back, so it can be forwarded when the flow resumes.
+                            localStorage.setItem(REDIRECTION_PARAMS_KEY,
+                                JSON.stringify(flow.data.requiredParams || []));
                             setLoading(true);
                             window.location.href = flow.data.redirectURL;
                             break;
